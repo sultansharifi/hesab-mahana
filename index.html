@@ -6,10 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="حساب ماهانه">
 <meta name="theme-color" content="#0E6A58">
+<title>حساب ماهانه</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
 </head>
 <body>
-<title>حساب ماهانه</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&family=Lalezar&display=swap">
 <style>
@@ -110,6 +112,8 @@ label.f input{font:inherit;font-size:17px;padding:10px 12px;border:1px solid var
 .foot .btn{flex:1;padding:12px;font-size:16px}
 .err{color:var(--out);font-size:13px;min-height:1em}
 .note{color:var(--muted);font-size:12px;text-align:center}
+.backup{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:-10px}
+.backup .btn{font-size:13px;min-height:40px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -131,6 +135,11 @@ label.f input{font:inherit;font-size:17px;padding:10px 12px;border:1px solid var
   <section><h2><span>عاید</span><span id="sum-in"></span></h2><div id="list-in" class="list"></div></section>
   <section><h2><span>مصارف</span><span id="sum-out"></span></h2><div id="list-out" class="list"></div></section>
   <p class="note" id="where"></p>
+  <div class="backup">
+    <button class="btn" data-act="export">گرفتن نسخهٔ پشتیبان</button>
+    <button class="btn" id="imp-btn" data-act="import" hidden>بازگرداندن از پشتیبان</button>
+    <input type="file" id="imp-file" accept="application/json,.json" hidden>
+  </div>
 </div>
 <button class="fab" id="fab" data-act="open" aria-label="افزودن عاید یا مصرف">+</button>
 <div id="sheet-root"></div>
@@ -236,7 +245,8 @@ function render(){
     $('#list-'+k).innerHTML=items.length?items.map(rowHTML).join(''):
       `<div class="empty">${k==='in'?'هنوز عایدی ثبت نشده.':'هنوز مصرفی ثبت نشده.'} با دکمهٔ + اضافه کن.${showProj?' موارد ثابت این ماه، ماه بعد خودکار به صورت پیش‌نویس می‌آیند.':''}</div>`;
   }
-  $('#where').textContent=S.mode==='cloud'?'معلومات تو خصوصی ذخیره می‌شود و فقط خودت می‌بینی.':S.mode==='local'?'معلومات در همین مرورگر ذخیره می‌شود.':'';
+  $('#where').textContent=S.mode==='cloud'?'معلومات تو خصوصی ذخیره می‌شود و فقط خودت می‌بینی.':S.mode==='local'?'معلومات فقط در همین مرورگر ذخیره می‌شود؛ گاه‌گاه نسخهٔ پشتیبان بگیر.':'';
+  $('#imp-btn').hidden=S.mode!=='local';
   renderSheet();
 }
 
@@ -273,8 +283,15 @@ function renderSheet(){
     <div class="err">${esc(sh.err)}</div>
     <div class="foot"><button class="btn" data-act="back">نه، برگرد</button><button class="btn primary" data-act="save">بله، ثبت کن</button></div>`;
   }
-  root.innerHTML=`<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true" dir="rtl" lang="fa"><div class="sheet-in">${body}</div></div>`;
+  // keep keyboard focus (and caret) on the same control across re-renders
+  const a=document.activeElement,inside=a&&root.contains(a);
+  const key=inside?(a.id?'#'+a.id:a.dataset.act?`[data-act="${a.dataset.act}"]${a.dataset.v?`[data-v="${a.dataset.v}"]`:''}`:null):null;
+  const caret=inside&&a.tagName==='INPUT'?a.selectionStart:null;
+  root.innerHTML=`<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h" dir="rtl" lang="fa"><div class="sheet-in">${body.replace('<h3>','<h3 id="sheet-h">')}</div></div>`;
+  const t=(key&&root.querySelector(key))||(inside||a===document.body||!a?root.querySelector('.sheet input,.sheet .choice button,.sheet .primary,.sheet button'):null);
+  if(t){t.focus({preventScroll:true});if(caret!=null&&t.setSelectionRange)try{t.setSelectionRange(caret,caret)}catch(e){}}
 }
+function closeSheet(){S.sheet=null;render();const f=$('#fab');if(f)f.focus({preventScroll:true})}
 function readFields(){const t=$('#f-title'),a=$('#f-amount');if(t)S.sheet.title=t.value;if(a)S.sheet.amount=a.value}
 
 async function save(){
@@ -285,7 +302,7 @@ async function save(){
     else if(sh.type==='fixed'){const r={id:newId(),kind:sh.kind,title:e.title,amount,startMonth:sh.month,createdAt:Date.now()};await put('recurring',r);e.recId=r.id}
     await put('entries',e);
     if(sh.recId){const r=S.rec.find(x=>x.id===sh.recId);if(r&&r.amount!==amount)await put('recurring',{...r,amount})}
-    S.sheet=null;render();
+    closeSheet();
   }catch(err){sh.err=err&&err.code==='quota_exceeded'?'جای ذخیره پر شده؛ چند مورد قدیمی را حذف کن.':'ثبت نشد. دوباره کوشش کن.';render()}
 }
 
@@ -298,7 +315,7 @@ document.addEventListener('click',async ev=>{
     case 'step':S.month=addM(S.month,+b.dataset.v);S.open=null;render();break;
     case 'go':S.month=b.dataset.v;S.open=null;render();break;
     case 'open':openSheet();break;
-    case 'close':S.sheet=null;render();break;
+    case 'close':closeSheet();break;
     case 'kind':sh.kind=b.dataset.v;render();break;
     case 'useHist':{const h=history(sh.kind)[+b.dataset.i];sh.title=h.title;sh.amount=String(h.amount);sh.type=h.type;render();break}
     case 'next1':{
@@ -309,14 +326,38 @@ document.addEventListener('click',async ev=>{
     case 'back':sh.err='';sh.step=sh.step===3&&!sh.recId?2:1;render();break;
     case 'save':save();break;
     case 'row':S.open=S.open===b.dataset.id?null:b.dataset.id;render();break;
-    case 'del':await del('entries',b.dataset.id);S.open=null;render();break;
+    case 'del':if(!confirm('این مورد از این ماه حذف شود؟'))break;await del('entries',b.dataset.id);S.open=null;render();break;
     case 'stop':{const r=S.rec.find(x=>x.id===b.dataset.id);const[y,m]=b.dataset.m.split('-').map(Number);await put('recurring',{...r,stopFrom:mk(new Date(y,m,1))});S.open=null;render();break}
     case 'confirmDraft':{const r=S.rec.find(x=>x.id===b.dataset.id);openSheet({kind:r.kind,title:r.title,amount:String(r.amount),type:'fixed',recId:r.id});break}
+    case 'export':exportData();break;
+    case 'import':$('#imp-file').click();break;
     case 'skipDraft':{const r=S.rec.find(x=>x.id===b.dataset.id);await put('entries',{id:newId(),recId:r.id,kind:r.kind,type:'fixed',title:r.title,amount:r.amount,month:S.month,status:'skipped',createdAt:Date.now()});break}
   }
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sheet){S.sheet=null;render()}if(e.key==='Enter'&&S.sheet&&S.sheet.step===1&&e.target.tagName==='INPUT'){e.preventDefault();$('[data-act="next1"]').click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sheet){closeSheet();return}
+  if(e.key==='Tab'&&S.sheet){const f=[...document.querySelectorAll('.sheet button,.sheet input')];if(!f.length)return;
+    const i=f.indexOf(document.activeElement);
+    if(e.shiftKey&&i<=0){e.preventDefault();f[f.length-1].focus()}else if(!e.shiftKey&&(i<0||i===f.length-1)){e.preventDefault();f[0].focus()}}if(e.key==='Enter'&&S.sheet&&S.sheet.step===1&&e.target.tagName==='INPUT'){e.preventDefault();$('[data-act="next1"]').click()}});
+
+/* ---------- backup: download / restore a JSON file ---------- */
+function exportData(){
+  const blob=new Blob([JSON.stringify({app:'hesab-mahana',version:1,exportedAt:new Date().toISOString(),entries:S.entries,rec:S.rec},null,1)],{type:'application/json'});
+  const u=URL.createObjectURL(blob),l=document.createElement('a');
+  l.href=u;l.download='hesab-mahana-'+mk(new Date())+'.json';document.body.appendChild(l);l.click();l.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),1000);
+}
+$('#imp-file').addEventListener('change',async ev=>{
+  const f=ev.target.files&&ev.target.files[0];ev.target.value='';if(!f)return;
+  let d;try{d=JSON.parse(await f.text())}catch(e){alert('این فایل خوانده نشد.');return}
+  const okE=x=>x&&typeof x.id==='string'&&(x.kind==='in'||x.kind==='out')&&typeof x.amount==='number'&&/^\d{4}-\d{2}$/.test(x.month);
+  const okR=x=>x&&typeof x.id==='string'&&(x.kind==='in'||x.kind==='out')&&typeof x.amount==='number'&&/^\d{4}-\d{2}$/.test(x.startMonth);
+  if(!d||!Array.isArray(d.entries)||!Array.isArray(d.rec)||!d.entries.every(okE)||!d.rec.every(okR)){alert('این فایل پشتیبانِ حساب ماهانه نیست.');return}
+  if(!confirm(`${nf.format(d.entries.length)} مورد پیدا شد. معلومات فعلی با این پشتیبان جایگزین شود؟`))return;
+  S.entries=d.entries;S.rec=d.rec;saveLocal();render();
+});
+
 render();init();
+if('serviceWorker' in navigator&&location.protocol==='https:'&&!window.claude)navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
 
